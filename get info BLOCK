@@ -1,0 +1,26 @@
+import asyncio
+from web3 import Web3
+from web3 import AsyncWeb3
+from web3.providers.async_rpc import AsyncHTTPProvider
+import datetime
+
+print("Введите адрес блока")
+address = input()
+address = f"{address}"
+#checksum_address = Web3.to_checksum_address(address)
+#0xf89d7b9c864f589bbf53a82105107622b35eaa40
+
+async def get_bloc():
+
+    w3_async = AsyncWeb3(AsyncHTTPProvider('https://rpc.mevblocker.io'))
+
+
+    # Получаем blok
+    block = await w3_async.eth.get_block(block_identifier=address, full_transactions=False)
+    print(f"Хэш блока: {block.hash.hex()}")
+ #   print(f"Время создания блока:")
+    print(f"Количество транзакций в блоке: {block.number}")
+    print(f"Время создания блока: {datetime.datetime.fromtimestamp(block.timestamp)}")
+
+asyncio.run(get_bloc())
+
