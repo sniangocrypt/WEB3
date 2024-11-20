@@ -1,0 +1,40 @@
+import asyncio
+from web3 import Web3
+from web3 import AsyncWeb3
+from web3.providers.async_rpc import AsyncHTTPProvider
+
+print("Введите адрес кошелька")
+address = input()
+address = f"{address}"
+checksum_address = Web3.to_checksum_address(address)
+#0xf89d7b9c864f589bbf53a82105107622b35eaa40
+#iJEDJZpL:8BTRYSv1@154.219.1.122:63862
+print("Введите proxy в формате username:password@ip:port")
+proxy = input()
+async def get_account_info():
+
+    proxy_url = f"http://{proxy}"
+
+    # Подключаемся к узлу Ethereum через прокси
+    w3_async = Web3(Web3.HTTPProvider(
+        'https://linea-rpc.publicnode.com',
+        request_kwargs={
+            'proxies': {
+                'http': proxy_url,
+                'https': proxy_url,
+            }
+        }
+    ))
+
+    # Проверяем соединение
+    if w3_async.is_connected():
+        print("Соединение через прокси установлено!")
+    else:
+        print("Не удалось установить соединение через прокси.")
+    # Получаем баланс
+    balance =  w3_async.eth.get_balance(checksum_address)
+    ether_balance = w3_async.from_wei(balance, 'ether')
+    print(f"Баланс адреса {address}: {ether_balance} ETH")
+
+
+asyncio.run(get_account_info())
