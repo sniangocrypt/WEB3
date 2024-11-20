@@ -1,0 +1,25 @@
+import asyncio
+from web3 import Web3
+from web3 import AsyncWeb3
+from web3.providers.async_rpc import AsyncHTTPProvider
+
+print("Введите адрес кошелька")
+address = input()
+address = f"{address}"
+checksum_address = Web3.to_checksum_address(address)
+#0xf89d7b9c864f589bbf53a82105107622b35eaa40
+
+async def get_account_info():
+
+    w3_async = AsyncWeb3(AsyncHTTPProvider('https://linea-rpc.publicnode.com'))
+
+    # Получаем баланс
+    balance = await w3_async.eth.get_balance(checksum_address)
+    ether_balance = w3_async.from_wei(balance, 'ether')
+
+    # Получаем nonce
+    nonce = await w3_async.eth.get_transaction_count(checksum_address)
+    print(f"Баланс адреса {address}: {ether_balance} ETH")
+    print(f"Nonce для адреса {address}: {nonce}")
+
+asyncio.run(get_account_info())
