@@ -1,0 +1,18 @@
+import asyncio
+from web3 import Web3
+from web3 import AsyncWeb3
+from web3.providers.async_rpc import AsyncHTTPProvider
+import datetime
+
+address = ["0xfA1650DaD6F6D0A28dFd827D33ecf242850AfC6a", "0x5d13e62c715e69d55a355d66a6555ffdffdb87e8", "0xfe8a62410921346f4b795226d9d1e8b1b9846abb", "0x1cf94662067fcd0d2159f910d36d71f409656485"]
+#checksum_address = Web3.to_checksum_address(address)
+async def get_info(address):
+    w3_async = AsyncWeb3(AsyncHTTPProvider('https://rpc.mevblocker.io'))
+
+    for intems in address:
+        checksum_address = Web3.to_checksum_address(intems)
+        balance = await w3_async.eth.get_balance(checksum_address)
+        ether_balance = w3_async.from_wei(balance, 'ether')
+        print(f"Баланс адреса {intems}: {ether_balance} ETH")
+
+asyncio.run(get_info(address))
