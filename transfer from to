@@ -1,0 +1,132 @@
+import asyncio
+from web3 import AsyncWeb3, AsyncHTTPProvider
+from web3.exceptions import TransactionNotFound
+
+print("Введите адрес кошелька")
+getadres = input()
+print("Укажите приватный ключ")
+private_key = input()
+print("Введите адрес получателя")
+resepient = input()
+print("Укажите количество токенов для перевода")
+value = input()
+w3_async = AsyncWeb3(AsyncHTTPProvider('https://arbitrum.rpc.subquery.network/public'))
+balance_wallet = []
+explorer_url = 'https://arbiscan.io/'
+async def get_balance(main_key):
+    try:
+        address = f"{main_key}"
+        checksum_address = w3_async.to_checksum_address(address)
+        balance = await w3_async.eth.get_balance(checksum_address)
+        ether_balance = w3_async.from_wei(balance, 'ether')
+        balance_wallet.append(ether_balance)
+        print(f"Баланс кошелька {checksum_address}: {ether_balance} ETH")
+        print()
+    except ValueError:
+        if main_key==getadres:
+            print("Вы ввели не верный адрес кошелька, попробуйте снова")
+        if main_key == resepient:print("Вы ввели не верный адрес получателя, попробуйте снова")
+
+
+async def get_gas():
+    await get_balance(getadres)
+    await get_balance(resepient)
+    base_fee = await w3_async.eth.gas_price
+    max_priority_fee_per_gas = await w3_async.eth.max_priority_fee
+
+    if max_priority_fee_per_gas == 0:
+        max_priority_fee_per_gas = base_fee
+
+    max_fee_per_gas = int(base_fee * 1.25 + max_priority_fee_per_gas)
+    max_fee_per_gas_eth = w3_async.from_wei(max_fee_per_gas, 'ether')
+    if (w3_async.to_wei(balance_wallet[0], 'ether')-max_fee_per_gas-w3_async.to_wei(value, 'ether')) <= 0:
+        print("Недостаточно баланса для создания транзации")
+
+async def sign_and_send_tx(transaction):
+    try:
+        signed_raw_tx = w3_async.eth.account.sign_transaction(transaction, private_key).rawTransaction
+    except ValueError:
+        print("Приватный ключ не корркетный, попробуйте снова")
+
+    print('Successfully signed transaction!')
+
+    tx_hash_bytes = await w3_async.eth.send_raw_transaction(signed_raw_tx)
+
+    print('Successfully sent transaction!')
+
+    tx_hash_hex = w3_async.to_hex(tx_hash_bytes)
+
+    return tx_hash_hex
+
+
+async def wait_tx(tx_hash):
+    total_time = 0
+    timeout = 120
+    poll_latency = 10
+    while True:
+        try:
+            receipts = await w3_async.eth.get_transaction_receipt(tx_hash)
+            status = receipts.get("status")
+            if status == 1:
+                print(f'Transaction was successful: {explorer_url}tx/{tx_hash}')
+                return True
+            elif status is None:
+                await asyncio.sleep(poll_latency)
+            else:
+                print(f'Transaction failed: {explorer_url}tx/{tx_hash}')
+                return False
+        except TransactionNotFound:
+            if total_time > timeout:
+                print(f"Transaction is not in the chain after {timeout} seconds")
+                return False
+            total_time += poll_latency
+            await asyncio.sleep(poll_latency)
+
+async def main():
+    await get_gas()
+    transaction = {
+        'chainId': await w3_async.eth.chain_id,
+        'nonce': await w3_async.eth.get_transaction_count(getadres),
+        'from': getadres,
+        'to': w3_async.to_checksum_address(resepient),
+        'value': w3_async.to_wei(value, 'ether'),
+        'gasPrice': int((await w3_async.eth.gas_price) * 1.25)
+    }
+
+    if eip_1559:
+        del transaction['gasPrice']
+
+        base_fee = await w3_async.eth.gas_price
+        max_priority_fee_per_gas = await w3_async.eth.max_priority_fee
+
+        if max_priority_fee_per_gas == 0:
+            max_priority_fee_per_gas = base_fee
+
+        max_fee_per_gas = int(base_fee * 1.25 + max_priority_fee_per_gas)
+
+        transaction['maxPriorityFeePerGas'] = max_priority_fee_per_gas
+        transaction['maxFeePerGas'] = max_fee_per_gas
+        transaction['type'] = '0x2'
+
+    transaction['gas'] = int((await w3_async.eth.estimate_gas(transaction)) * 1.5)
+
+    tx_hash = await sign_and_send_tx(transaction)
+    await wait_tx(tx_hash)
+
+
+async def info_after_transfer(main_key):
+    address = f"{main_key}"
+    checksum_address = w3_async.to_checksum_address(address)
+    balance = await w3_async.eth.get_balance(checksum_address)
+    ether_balance = w3_async.from_wei(balance, 'ether')
+    balance_wallet.append(ether_balance)
+    print(f"Баланс кошелька после трансфера {checksum_address}: {ether_balance} ETH")
+    print()
+
+async def transfer():
+    await main()
+    await info_after_transfer(getadres)
+    await info_after_transfer(resepient)
+
+eip_1559 = True
+asyncio.run(transfer())
