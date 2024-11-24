@@ -1,0 +1,148 @@
+import asyncio
+from web3 import AsyncWeb3, AsyncHTTPProvider
+from web3.exceptions import TransactionNotFound
+
+class Wallet:
+    def __init__(self, address, private_key):
+        self.address = AsyncWeb3.to_checksum_address(address)
+        self.private_key = private_key
+        self.web3 = AsyncWeb3(AsyncHTTPProvider('https://arbitrum.rpc.subquery.network'))
+        self.balance = 0
+
+    async def update_balance(self):
+        balance_wei = await self.web3.eth.get_balance(self.address)
+        self.balance = self.web3.from_wei(balance_wei, 'ether')
+        print(f"Баланс кошелька {self.address}: {self.balance} ETH")
+
+    def has_sufficient_balance(self, value_wei, gas_wei):
+        total_required = value_wei + gas_wei
+        return self.web3.to_wei(self.balance, 'ether') >= total_required
+
+
+class GasManager:
+    def __init__(self, web3, max_gas_gwei=50):
+        self.web3 = web3
+        self.max_gas_gwei = max_gas_gwei
+
+    async def wait_for_gas(self):
+        while True:
+            current_gas = await self.web3.eth.gas_price
+            gas_gwei = self.web3.from_wei(current_gas, 'gwei')
+            print(f"Текущий газ: {gas_gwei} Gwei")
+            if gas_gwei < self.max_gas_gwei:
+                break
+            else:
+                print("Ожидаем снижения газа...")
+                await asyncio.sleep(20)
+
+    async def calculate_fees(self):
+        base_fee = await self.web3.eth.gas_price
+        max_priority_fee_per_gas = await self.web3.eth.max_priority_fee or base_fee
+        max_fee_per_gas = int(base_fee * 1.25 + max_priority_fee_per_gas)
+        return max_fee_per_gas, max_priority_fee_per_gas
+
+
+class TransactionManager:
+    def __init__(self, sender: Wallet, recipient: Wallet, value_eth, gas_manager: GasManager):
+        self.sender = sender
+        self.recipient = recipient
+        self.value_wei = self.sender.web3.to_wei(value_eth, 'ether')
+        self.gas_manager = gas_manager
+        self.web3 = sender.web3
+        self.explorer_url = 'https://arbiscan.io/'
+
+    async def create_transaction(self):
+        chain_id = await self.web3.eth.chain_id
+        nonce = await self.web3.eth.get_transaction_count(self.sender.address)
+        base_fee, max_priority_fee = await self.gas_manager.calculate_fees()
+
+        transaction = {
+            'chainId': chain_id,
+            'nonce': nonce,
+            'from': self.sender.address,
+            'to': self.recipient.address,
+            'value': self.value_wei,
+            'gasPrice': int(base_fee * 1.25),
+            'gas': 21000,  # Basic transfer gas
+        }
+
+        # EIP-1559
+        transaction['maxPriorityFeePerGas'] = max_priority_fee
+        transaction['maxFeePerGas'] = base_fee
+        transaction['type'] = '0x2'
+
+        return transaction
+
+    async def sign_and_send(self, transaction):
+        signed_tx = self.web3.eth.account.sign_transaction(transaction, self.sender.private_key).rawTransaction
+        tx_hash = await self.web3.eth.send_raw_transaction(signed_tx)
+        print('Транзакция успешно отправлена!')
+        return self.web3.to_hex(tx_hash)
+
+    async def wait_for_receipt(self, tx_hash):
+        total_time = 0
+        timeout = 120
+        poll_latency = 10
+
+        while total_time < timeout:
+            try:
+                receipt = await self.web3.eth.get_transaction_receipt(tx_hash)
+                status = receipt.get("status")
+                if status == 1:
+                    print(f'Транзакция успешна: {self.explorer_url}tx/{tx_hash}')
+                    return True
+                elif status == 0:
+                    print(f'Транзакция провалена: {self.explorer_url}tx/{tx_hash}')
+                    return False
+            except TransactionNotFound:
+                await asyncio.sleep(poll_latency)
+                total_time += poll_latency
+
+        print(f"Транзакция не появилась в сети за {timeout} секунд")
+        return False
+
+    async def execute_transfer(self):
+        transaction = await self.create_transaction()
+        if not self.sender.has_sufficient_balance(self.value_wei, transaction['maxFeePerGas']):
+            print("Недостаточно баланса для выполнения транзакции")
+            return False
+
+        tx_hash = await self.sign_and_send(transaction)
+        return await self.wait_for_receipt(tx_hash)
+
+
+async def main():
+    print("Введите адрес кошелька отправителя:")
+    sender_address = input()
+    print("Укажите приватный ключ:")
+    sender_key = input()
+    print("Введите адрес получателя:")
+    recipient_address = input()
+    print("Укажите количество токенов для перевода:")
+    value = float(input())
+
+    sender_wallet = Wallet(sender_address, sender_key)
+    recipient_wallet = Wallet(recipient_address, None)
+    gas_manager = GasManager(sender_wallet.web3)
+
+    await gas_manager.wait_for_gas()
+    await sender_wallet.update_balance()
+    await recipient_wallet.update_balance()
+
+    tx_manager = TransactionManager(sender_wallet, recipient_wallet, value, gas_manager)
+    success = await tx_manager.execute_transfer()
+
+    if success:
+        await sender_wallet.update_balance()
+        await recipient_wallet.update_balance()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+
+
+
+
+
