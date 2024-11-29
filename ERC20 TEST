@@ -22,12 +22,12 @@ what_gas = 50   #Максимальный газ в эфире
 contract_address = f"0xaf88d065e77c8cC2239327C5EDb3A432268e5831"  # ардрес контракта в вашей сети
 
 
-
-def load_abi(filename):
+async def load_abi(filename):
     with open(filename, 'r') as abi_file:
         abi = json.load(abi_file)
     return abi
-a =  load_abi("abi.json")
+
+a = asyncio.run(load_abi("abi.json"))
 contract = w3_async.eth.contract(address=contract_address, abi=a)
 
 async def wait_gas():
