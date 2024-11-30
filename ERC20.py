@@ -12,7 +12,7 @@ w3_async = AsyncWeb3(AsyncHTTPProvider('https://arbitrum.rpc.subquery.network/pu
 getadres =  w3_async.eth.account.from_key(private_key).address
 
 
-value = 50  # количество токенов для перевода
+value = 2  # количество токенов для перевода
 
 balance_wallet = []
 explorer_url = 'https://arbiscan.io/' # ссылка на эксплоер нужной сети для получения ссылки на транзу
@@ -28,7 +28,9 @@ async def load_abi(filename):
     return abi
 
 a = asyncio.run(load_abi("abi.json"))
+
 contract = w3_async.eth.contract(address=contract_address, abi=a)
+
 
 async def wait_gas():
     w3_async_eth = AsyncWeb3(AsyncHTTPProvider('https://eth.meowrpc.com'))
@@ -44,7 +46,6 @@ async def wait_gas():
 
 
 
-
 async def get_balance(main_key):
     try:
         address = f"{main_key}"
@@ -54,12 +55,16 @@ async def get_balance(main_key):
         balance_wallet.append(ether_balance)
         print(f"Баланс кошелька {checksum_address}: {ether_balance} ETH")
         # ПОЛУЧЕАМ ИНФОРМАЦИЮ О БАЛАНСЕ ТОКЕНА ЕРС20
+
         balance_contract = await contract.functions.balanceOf(main_key).call()
-        print(f"Баланс {await contract.functions.symbol().call()}: {w3_async.from_wei(balance_contract, 'mwei')}")
+        decimals = await contract.functions.decimals().call()
+        readable_value = balance_contract / (10 ** decimals)
+
+        print(f"Баланс {await contract.functions.symbol().call()}: {readable_value}")
         print()
         if  w3_async.from_wei(balance_contract, 'mwei') < value:
             print(f"Недостаточный баланс {await contract.functions.symbol().call()} для перевода")
-            print(f"Требуется пополнить баланс на {(w3_async.from_wei(balance_contract, 'mwei')-value)*-1} {await contract.functions.symbol().call()}")
+            print(f"Требуется пополнить баланс на {(readable_value-value)*-1} {await contract.functions.symbol().call()}")
             exit()
     except ValueError:
         if main_key==getadres:
@@ -127,6 +132,7 @@ async def main():
       #  transaction['gas'] = int((await w3_async.eth.estimate_gas(transaction)) * 1.5)
 
       #  tx_hash = await sign_and_send_tx(transaction)
+        print("Выполняю перевод токенов")
         await wait_tx(tx_hash)
     except ValueError:
         print(f"На счету нет суммы {value} для перевода, проверьте баланс или сумму перевода")
@@ -138,10 +144,12 @@ async def info_after_transfer(main_key):
     checksum_address = w3_async.to_checksum_address(address)
     balance = await w3_async.eth.get_balance(checksum_address)
     ether_balance = w3_async.from_wei(balance, 'ether')
-    balance_wallet.append(ether_balance)
+    balance_contract = await contract.functions.balanceOf(main_key).call()
+    decimals = await contract.functions.decimals().call()
+    readable_value = balance_contract / (10 ** decimals)
     print(f"Баланс кошелька {checksum_address} после трансфера: {ether_balance} ETH")
     balance_contract = await contract.functions.balanceOf(main_key).call()
-    print(f"Баланс {await contract.functions.symbol().call()}: {w3_async.from_wei(balance_contract, 'mwei')}")
+    print(f"Баланс {await contract.functions.symbol().call()}: {readable_value}")
     print()
 
 async def transfer():
